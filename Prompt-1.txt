@@ -1,0 +1,36 @@
+I want to build the patient portal with minimal version using java sprint boot. The existing project contains only simple base spring boot application. You have to add the necessary dependencies as and when we add new functionality and new features we are adding.
+
+The base minimal version should contains:
+A patient portal lets patients view and book appointments online instead of calling the front desk, while providers manage those requests from the other side. Build aminimal version: two user types: 1. patient and 2. provider which should be selectable with a simple role switcher. No real auth needed.
+
+Data should survive a page refresh. An in-memory store, H2 or SQLite is fine.
+
+We will use thymeleaf for UI for simplicity of the application.
+
+I want to keep it as simple as possible. As in this version, we should not think of scale, so skip the microservices, the queues, and the auth systems. The simplest thing that solves the problem is the right answer.
+
+So, as a patient, I can request an appointment. The appointment should contain below information:
+appointment_id (primary key, auto increament)
+date/time
+provider_name
+appointment_type
+reason
+status
+New requests start in pending status by default. No real scheduling logic needed. Just persist the request using H2 database.
+
+Patiend can view appointment list those are already requested and stored.
+
+Cancelling an appointment: A patient can cancel a confirmed appointment.Pending appointments cannot be cancelled. So, enable, disable the button state accordingly.
+
+As a provider, I can view the appointments booked/requested by the patient.
+Confirm or reschedule: The provider can confirm a pending appointment, or reschedule it by updating the date/time. Confirmed appointments move to
+confirmed status.
+Appointment status flow as a provider (Based on below, enable/disable the button states):
+Pending → Confirmed → Cancelled -> Got cancelled
+Pending → Reschedule -> It should remains in Pending
+Pending → Confirmed -> Appointment confirmed
+Confirmed → Reschedule -> Appoint remains in confirmed state
+Confirmed appointment can not be confrmed again
+Cancelled appointment can not be rescheduled again.
+
+As and when we grow, also update the README.md file which will use for future reference and for new developer to understand the project. Also, in starting, include the necessary instructions to run the application and if any prerequisites.
