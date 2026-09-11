@@ -76,10 +76,11 @@ public class AppointmentController {
     @PostMapping("/appointments/{id}/cancel")
     public String cancelAppointment(
             @PathVariable("id") Long id,
+            @RequestParam("version") Integer version,
             @RequestParam(name = "role", defaultValue = "patient") String role,
             RedirectAttributes redirectAttributes) {
         try {
-            appointmentService.cancelAppointment(id);
+            appointmentService.cancelAppointment(id, version);
             redirectAttributes.addFlashAttribute("successMessage",
                     "Appointment #" + id + " has been cancelled.");
         } catch (Exception e) {
@@ -91,10 +92,11 @@ public class AppointmentController {
     @PostMapping("/appointments/{id}/confirm")
     public String confirmAppointment(
             @PathVariable("id") Long id,
+            @RequestParam("version") Integer version,
             @RequestParam(name = "role", defaultValue = "provider") String role,
             RedirectAttributes redirectAttributes) {
         try {
-            appointmentService.confirmAppointment(id);
+            appointmentService.confirmAppointment(id, version);
             redirectAttributes.addFlashAttribute("successMessage",
                     "Appointment #" + id + " has been confirmed.");
         } catch (Exception e) {
@@ -107,10 +109,11 @@ public class AppointmentController {
     public String rescheduleAppointment(
             @PathVariable("id") Long id,
             @RequestParam("newDateTime") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime newDateTime,
+            @RequestParam("version") Integer version,
             @RequestParam(name = "role", defaultValue = "provider") String role,
             RedirectAttributes redirectAttributes) {
         try {
-            Appointment updated = appointmentService.rescheduleAppointment(id, newDateTime);
+            Appointment updated = appointmentService.rescheduleAppointment(id, newDateTime, version);
             redirectAttributes.addFlashAttribute("successMessage",
                     "Appointment #" + id + " rescheduled to " + updated.getDateTime() + " (Status remains " + updated.getStatus() + ").");
         } catch (Exception e) {

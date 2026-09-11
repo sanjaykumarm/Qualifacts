@@ -88,6 +88,19 @@ A role switcher in the header enables toggling between **Patient** and **Provide
   - Rescheduling a **`CONFIRMED`** appointment keeps it in **`CONFIRMED`** status.
   - **`CANCELLED`** appointments cannot be rescheduled (Reschedule button is disabled).
 
+### 4. Concurrency Control & Conflict Prevention (Optimistic Locking)
+Every state mutation (**Cancel**, **Confirm**, and **Reschedule**) is strictly protected by JPA Optimistic Locking (`@Version`):
+- **Universal Protection across Roles**:
+  - If a patient cancels while a provider is attempting to reschedule the same appointment, the provider's stale reschedule is rejected.
+  - If a provider reschedules while a patient is attempting to cancel, the patient's stale cancellation is rejected.
+  - If multiple staff members attempt to confirm or reschedule simultaneously, only the first action succeeds.
+- **Strict Version Requirement**:
+  - The `version` parameter is mandatory on all mutation endpoints (`/cancel`, `/confirm`, `/reschedule`). If omitted or null, the request is rejected immediately with an error to prevent accidental overrides by future API integrations.
+- **Graceful Conflict Alert**:
+  - If a version collision is detected, the transaction aborts cleanly with HTTP 409 Conflict.
+  - The user is cleanly advised:
+    > *"This appointment was modified by another user while you were viewing it. Your action was not applied, and the latest schedule is shown below."*
+
 ---
 
 ## Appointment State & Action Matrix

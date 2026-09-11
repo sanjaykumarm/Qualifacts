@@ -178,4 +178,100 @@ class AppointmentServiceTest {
         assertEquals(newTime, rescheduled.getDateTime());
         assertEquals(AppointmentStatus.CONFIRMED, rescheduled.getStatus());
     }
+
+    @Test
+    void testCancelAppointmentWithStaleVersionThrowsException() {
+        LocalDateTime time = LocalDateTime.now().plusDays(1);
+        Appointment appt = appointmentService.bookAppointment(
+                time,
+                "Dr. Bob Johnson (Cardiologist)",
+                "Consultation",
+                "Heart palpitations"
+        );
+
+        Appointment confirmed = appointmentService.confirmAppointment(appt.getAppointmentId());
+        Integer staleVersion = confirmed.getVersion();
+
+        // Provider reschedules to a new time, which increments version
+        LocalDateTime newTime = LocalDateTime.now().plusDays(2);
+        Appointment rescheduled = appointmentService.rescheduleAppointment(appt.getAppointmentId(), newTime);
+
+        assertNotEquals(staleVersion, rescheduled.getVersion());
+
+        // Patient attempts to cancel using the stale version
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+                appointmentService.cancelAppointment(appt.getAppointmentId(), staleVersion)
+        );
+        assertTrue(ex.getMessage().contains("modified by another user"));
+
+        // Patient cancels with the up-to-date version
+        Appointment cancelled = appointmentService.cancelAppointment(appt.getAppointmentId(), rescheduled.getVersion());
+        assertEquals(AppointmentStatus.CANCELLED, cancelled.getStatus());
+    }
+
+    @Test
+    void testRescheduleWithStaleVersionThrowsExceptionWhenPatientCancelledConcurrently() {
+        LocalDateTime time = LocalDateTime.now().plusDays(1);
+        Appointment appt = appointmentService.bookAppointment(
+                time,
+                "Dr. Alice Smith (General Physician)",
+                "Checkup",
+                "Routine checkup"
+        );
+        Appointment confirmed = appointmentService.confirmAppointment(appt.getAppointmentId());
+        Integer staleVersion = confirmed.getVersion();
+
+        // Concurrently, patient cancels the confirmed appointment -> version increments to 2
+        Appointment cancelled = appointmentService.cancelAppointment(appt.getAppointmentId(), staleVersion);
+        assertNotEquals(staleVersion, cancelled.getVersion());
+
+        // Provider tries to reschedule based on the stale version (e.g. version 1)
+        LocalDateTime newTime = LocalDateTime.now().plusDays(4);
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+                appointmentService.rescheduleAppointment(appt.getAppointmentId(), newTime, staleVersion)
+        );
+        assertTrue(ex.getMessage().contains("modified by another user"));
+    }
+
+    @Test
+    void testConfirmWithStaleVersionThrowsException() {
+        LocalDateTime time = LocalDateTime.now().plusDays(1);
+        Appointment appt = appointmentService.bookAppointment(
+                time,
+                "Dr. Carol Williams (Pediatrician)",
+                "Consultation",
+                "Child rash"
+        );
+        Integer initialVersion = appt.getVersion();
+
+        // Concurrently, provider reschedules pending appointment -> version increments
+        appointmentService.rescheduleAppointment(appt.getAppointmentId(), LocalDateTime.now().plusDays(2));
+
+        // Provider attempts to confirm using stale version
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+                appointmentService.confirmAppointment(appt.getAppointmentId(), initialVersion)
+        );
+        assertTrue(ex.getMessage().contains("modified by another user"));
+    }
+
+    @Test
+    void testMissingVersionThrowsIllegalArgumentException() {
+        LocalDateTime time = LocalDateTime.now().plusDays(1);
+        Appointment appt = appointmentService.bookAppointment(
+                time,
+                "Dr. Bob Johnson (Cardiologist)",
+                "Checkup",
+                "Routine"
+        );
+
+        assertThrows(IllegalArgumentException.class, () ->
+                appointmentService.cancelAppointment(appt.getAppointmentId(), null)
+        );
+        assertThrows(IllegalArgumentException.class, () ->
+                appointmentService.confirmAppointment(appt.getAppointmentId(), null)
+        );
+        assertThrows(IllegalArgumentException.class, () ->
+                appointmentService.rescheduleAppointment(appt.getAppointmentId(), LocalDateTime.now().plusDays(3), null)
+        );
+    }
 }

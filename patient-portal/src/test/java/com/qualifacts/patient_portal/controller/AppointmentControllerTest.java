@@ -84,6 +84,7 @@ class AppointmentControllerTest {
         );
 
         mockMvc.perform(post("/appointments/" + appt.getAppointmentId() + "/confirm")
+                        .param("version", String.valueOf(appt.getVersion()))
                         .param("role", "provider"))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/appointments?role=provider"))
@@ -101,6 +102,7 @@ class AppointmentControllerTest {
 
         mockMvc.perform(post("/appointments/" + appt.getAppointmentId() + "/reschedule")
                         .param("newDateTime", "2026-09-25T14:00")
+                        .param("version", String.valueOf(appt.getVersion()))
                         .param("role", "provider"))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/appointments?role=provider"))
@@ -116,12 +118,82 @@ class AppointmentControllerTest {
                 "Routine"
         );
         // First confirm it
-        appointmentService.confirmAppointment(appt.getAppointmentId());
+        Appointment confirmed = appointmentService.confirmAppointment(appt.getAppointmentId());
 
         mockMvc.perform(post("/appointments/" + appt.getAppointmentId() + "/cancel")
+                        .param("version", String.valueOf(confirmed.getVersion()))
                         .param("role", "patient"))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/appointments?role=patient"))
                 .andExpect(flash().attributeExists("successMessage"));
+    }
+
+    @Test
+    void testCancelAppointmentWithStaleVersionPost() throws Exception {
+        Appointment appt = appointmentService.bookAppointment(
+                LocalDateTime.now().plusDays(2),
+                "Dr. Alice Smith (General Physician)",
+                "Checkup",
+                "Routine"
+        );
+        Appointment confirmed = appointmentService.confirmAppointment(appt.getAppointmentId());
+        Integer staleVersion = confirmed.getVersion();
+
+        // Reschedule increments version
+        appointmentService.rescheduleAppointment(appt.getAppointmentId(), LocalDateTime.now().plusDays(3));
+
+        // Submit cancel with stale version
+        mockMvc.perform(post("/appointments/" + appt.getAppointmentId() + "/cancel")
+                        .param("version", String.valueOf(staleVersion))
+                        .param("role", "patient"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/appointments?role=patient"))
+                .andExpect(flash().attributeExists("errorMessage"));
+    }
+
+    @Test
+    void testRescheduleWithStaleVersionPost() throws Exception {
+        Appointment appt = appointmentService.bookAppointment(
+                LocalDateTime.now().plusDays(2),
+                "Dr. Bob Johnson (Cardiologist)",
+                "Checkup",
+                "Routine"
+        );
+        Appointment confirmed = appointmentService.confirmAppointment(appt.getAppointmentId());
+        Integer staleVersion = confirmed.getVersion();
+
+        // Patient cancels concurrently
+        appointmentService.cancelAppointment(appt.getAppointmentId(), staleVersion);
+
+        // Provider tries to reschedule with stale version
+        mockMvc.perform(post("/appointments/" + appt.getAppointmentId() + "/reschedule")
+                        .param("newDateTime", "2026-09-30T10:00")
+                        .param("version", String.valueOf(staleVersion))
+                        .param("role", "provider"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/appointments?role=provider"))
+                .andExpect(flash().attributeExists("errorMessage"));
+    }
+
+    @Test
+    void testConfirmWithStaleVersionPost() throws Exception {
+        Appointment appt = appointmentService.bookAppointment(
+                LocalDateTime.now().plusDays(2),
+                "Dr. Carol Williams (Pediatrician)",
+                "Checkup",
+                "Routine"
+        );
+        Integer staleVersion = appt.getVersion();
+
+        // Reschedule changes version
+        appointmentService.rescheduleAppointment(appt.getAppointmentId(), LocalDateTime.now().plusDays(4));
+
+        // Provider tries to confirm with stale version
+        mockMvc.perform(post("/appointments/" + appt.getAppointmentId() + "/confirm")
+                        .param("version", String.valueOf(staleVersion))
+                        .param("role", "provider"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/appointments?role=provider"))
+                .andExpect(flash().attributeExists("errorMessage"));
     }
 }

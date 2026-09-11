@@ -300,6 +300,7 @@
                     <div th:if="${role == 'patient'}">
                         <form th:action="@{/appointments/{id}/cancel(id=${appt.appointmentId})}" method="post" class="action-form">
                             <input type="hidden" name="role" value="patient">
+                            <input type="hidden" name="version" th:value="${appt.version}">
                             <!-- Enabled only if CONFIRMED. Pending or Cancelled cannot be cancelled -->
                             <button type="submit" class="btn btn-danger"
                                     th:disabled="${!appt.canPatientCancel()}"
@@ -315,6 +316,7 @@
                         <!-- Confirm Action -->
                         <form th:action="@{/appointments/{id}/confirm(id=${appt.appointmentId})}" method="post" class="action-form">
                             <input type="hidden" name="role" value="provider">
+                            <input type="hidden" name="version" th:value="${appt.version}">
                             <button type="submit" class="btn btn-success"
                                     th:disabled="${!appt.canProviderConfirm()}"
                                     th:title="${appt.status.name() == 'CONFIRMED' ? 'Confirmed appointment cannot be confirmed again' : (appt.status.name() == 'CANCELLED' ? 'Cancelled appointment cannot be confirmed' : 'Confirm appointment')}">
@@ -328,6 +330,7 @@
                                 th:title="${appt.status.name() == 'CANCELLED' ? 'Cancelled appointment cannot be rescheduled' : 'Reschedule appointment'}"
                                 th:data-id="${appt.appointmentId}"
                                 th:data-datetime="${appt.dateTime}"
+                                th:data-version="${appt.version}"
                                 onclick="handleRescheduleClick(this)">
                             Reschedule
                         </button>
@@ -348,6 +351,7 @@
         </div>
         <form id="rescheduleForm" method="post">
             <input type="hidden" name="role" value="provider">
+            <input type="hidden" id="rescheduleVersion" name="version">
             <div class="form-group">
                 <label id="rescheduleModalLabel" for="newDateTime">New Date and Time *</label>
                 <input type="datetime-local" id="newDateTime" name="newDateTime" required>
@@ -367,10 +371,11 @@
     function handleRescheduleClick(button) {
         var appointmentId = button.getAttribute('data-id');
         var currentDateTime = button.getAttribute('data-datetime');
-        openRescheduleModal(appointmentId, currentDateTime);
+        var version = button.getAttribute('data-version');
+        openRescheduleModal(appointmentId, currentDateTime, version);
     }
 
-    function openRescheduleModal(appointmentId, currentDateTime) {
+    function openRescheduleModal(appointmentId, currentDateTime, version) {
         var form = document.getElementById('rescheduleForm');
         form.action = '/appointments/' + appointmentId + '/reschedule';
         var label = document.getElementById('rescheduleModalLabel');
@@ -380,6 +385,7 @@
             // Cut seconds/millis if present for datetime-local (format YYYY-MM-DDTHH:MM)
             dateInput.value = currentDateTime.substring(0, 16);
         }
+        document.getElementById('rescheduleVersion').value = version;
         document.getElementById('rescheduleModal').style.display = 'block';
     }
 

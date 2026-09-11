@@ -8,6 +8,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.time.LocalDateTime;
 
 @Entity
@@ -18,6 +19,10 @@ public class Appointment {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "appointment_id")
     private Long appointmentId;
+
+    @Version
+    @Column(name = "version")
+    private Integer version;
 
     @Column(name = "date_time", nullable = false)
     private LocalDateTime dateTime;
@@ -52,6 +57,14 @@ public class Appointment {
 
     public void setAppointmentId(Long appointmentId) {
         this.appointmentId = appointmentId;
+    }
+
+    public Integer getVersion() {
+        return version;
+    }
+
+    public void setVersion(Integer version) {
+        this.version = version;
     }
 
     public LocalDateTime getDateTime() {

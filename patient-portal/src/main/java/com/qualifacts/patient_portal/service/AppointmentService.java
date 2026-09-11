@@ -43,22 +43,42 @@ public class AppointmentService {
 
         Appointment appointment = new Appointment(dateTime, providerName.trim(), appointmentType.trim(), reason != null ? reason.trim() : "");
         appointment.setStatus(AppointmentStatus.PENDING);
-        return appointmentRepository.save(appointment);
+        // To guarantee immediate database synchronization and version increment.
+        return appointmentRepository.saveAndFlush(appointment);
     }
 
-    public Appointment cancelAppointment(Long id) {
+    private void validateVersion(Appointment appointment, Integer clientVersion) {
+        if (clientVersion == null) {
+            throw new IllegalArgumentException("Version is required for concurrency control.");
+        }
+        if (!clientVersion.equals(appointment.getVersion())) {
+            throw new IllegalStateException(
+                    "This appointment was modified by another user while you were viewing it. " +
+                    "Your action was not applied, and the latest schedule is shown below."
+            );
+        }
+    }
+
+    public Appointment cancelAppointment(Long id, Integer clientVersion) {
         Appointment appointment = getAppointmentById(id);
+        validateVersion(appointment, clientVersion);
 
         if (appointment.getStatus() != AppointmentStatus.CONFIRMED) {
             throw new IllegalStateException("Only confirmed appointments can be cancelled. Current status is " + appointment.getStatus());
         }
 
         appointment.setStatus(AppointmentStatus.CANCELLED);
-        return appointmentRepository.save(appointment);
+        // To guarantee immediate database synchronization and version increment.
+        return appointmentRepository.saveAndFlush(appointment);
     }
 
-    public Appointment confirmAppointment(Long id) {
+    public Appointment cancelAppointment(Long id) {
+        return cancelAppointment(id, getAppointmentById(id).getVersion());
+    }
+
+    public Appointment confirmAppointment(Long id, Integer clientVersion) {
         Appointment appointment = getAppointmentById(id);
+        validateVersion(appointment, clientVersion);
 
         if (appointment.getStatus() == AppointmentStatus.CONFIRMED) {
             throw new IllegalStateException("Appointment is already confirmed.");
@@ -71,15 +91,21 @@ public class AppointmentService {
         }
 
         appointment.setStatus(AppointmentStatus.CONFIRMED);
-        return appointmentRepository.save(appointment);
+        // To guarantee immediate database synchronization and version increment.
+        return appointmentRepository.saveAndFlush(appointment);
     }
 
-    public Appointment rescheduleAppointment(Long id, LocalDateTime newDateTime) {
+    public Appointment confirmAppointment(Long id) {
+        return confirmAppointment(id, getAppointmentById(id).getVersion());
+    }
+
+    public Appointment rescheduleAppointment(Long id, LocalDateTime newDateTime, Integer clientVersion) {
         if (newDateTime == null) {
             throw new IllegalArgumentException("New appointment date and time is required for rescheduling.");
         }
 
         Appointment appointment = getAppointmentById(id);
+        validateVersion(appointment, clientVersion);
 
         if (appointment.getStatus() == AppointmentStatus.CANCELLED) {
             throw new IllegalStateException("Cancelled appointments cannot be rescheduled.");
@@ -87,6 +113,11 @@ public class AppointmentService {
 
         // Pending stays Pending; Confirmed stays Confirmed
         appointment.setDateTime(newDateTime);
-        return appointmentRepository.save(appointment);
+        // To guarantee immediate database synchronization and version increment.
+        return appointmentRepository.saveAndFlush(appointment);
+    }
+
+    public Appointment rescheduleAppointment(Long id, LocalDateTime newDateTime) {
+        return rescheduleAppointment(id, newDateTime, getAppointmentById(id).getVersion());
     }
 }
