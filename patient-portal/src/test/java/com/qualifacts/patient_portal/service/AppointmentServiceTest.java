@@ -274,4 +274,53 @@ class AppointmentServiceTest {
                 appointmentService.rescheduleAppointment(appt.getAppointmentId(), LocalDateTime.now().plusDays(3), null)
         );
     }
+
+    @Test
+    void testAuditHistoryTracksFullLifecycle() {
+        LocalDateTime mondayTime = LocalDateTime.of(2026, 9, 14, 10, 0); // Monday
+        Appointment appt = appointmentService.bookAppointment(
+                mondayTime,
+                "Dr. Alice Smith (General Physician)",
+                "Consultation",
+                "Routine consult"
+        );
+
+        // 1. Check history after booking
+        List<com.qualifacts.patient_portal.model.AppointmentHistory> h1 = appointmentService.getAppointmentHistory(appt.getAppointmentId());
+        assertEquals(1, h1.size());
+        assertEquals(com.qualifacts.patient_portal.model.AppointmentHistoryAction.REQUESTED, h1.get(0).getAction());
+        assertEquals("PATIENT", h1.get(0).getActorRole());
+        assertEquals(mondayTime, h1.get(0).getNewDateTime());
+        assertNull(h1.get(0).getPreviousDateTime());
+        assertEquals(AppointmentStatus.PENDING, h1.get(0).getNewStatus());
+
+        // 2. Confirm by provider
+        Appointment confirmed = appointmentService.confirmAppointment(appt.getAppointmentId());
+        List<com.qualifacts.patient_portal.model.AppointmentHistory> h2 = appointmentService.getAppointmentHistory(appt.getAppointmentId());
+        assertEquals(2, h2.size());
+        assertEquals(com.qualifacts.patient_portal.model.AppointmentHistoryAction.CONFIRMED, h2.get(0).getAction());
+        assertEquals("PROVIDER", h2.get(0).getActorRole());
+        assertEquals(AppointmentStatus.PENDING, h2.get(0).getPreviousStatus());
+        assertEquals(AppointmentStatus.CONFIRMED, h2.get(0).getNewStatus());
+
+        // 3. Reschedule from Monday to Wednesday by provider
+        LocalDateTime wednesdayTime = LocalDateTime.of(2026, 9, 16, 14, 0); // Wednesday
+        Appointment rescheduled = appointmentService.rescheduleAppointment(appt.getAppointmentId(), wednesdayTime);
+        List<com.qualifacts.patient_portal.model.AppointmentHistory> h3 = appointmentService.getAppointmentHistory(appt.getAppointmentId());
+        assertEquals(3, h3.size());
+        assertEquals(com.qualifacts.patient_portal.model.AppointmentHistoryAction.RESCHEDULED, h3.get(0).getAction());
+        assertEquals("PROVIDER", h3.get(0).getActorRole());
+        assertEquals(mondayTime, h3.get(0).getPreviousDateTime());
+        assertEquals(wednesdayTime, h3.get(0).getNewDateTime());
+        assertTrue(h3.get(0).getDetails().contains("Rescheduled from"));
+
+        // 4. Cancel by patient
+        Appointment cancelled = appointmentService.cancelAppointment(appt.getAppointmentId());
+        List<com.qualifacts.patient_portal.model.AppointmentHistory> h4 = appointmentService.getAppointmentHistory(appt.getAppointmentId());
+        assertEquals(4, h4.size());
+        assertEquals(com.qualifacts.patient_portal.model.AppointmentHistoryAction.CANCELLED, h4.get(0).getAction());
+        assertEquals("PATIENT", h4.get(0).getActorRole());
+        assertEquals(AppointmentStatus.CONFIRMED, h4.get(0).getPreviousStatus());
+        assertEquals(AppointmentStatus.CANCELLED, h4.get(0).getNewStatus());
+    }
 }

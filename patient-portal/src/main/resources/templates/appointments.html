@@ -309,6 +309,11 @@
                                 Cancel
                             </button>
                         </form>
+                        <button type="button" class="btn" style="background-color: #6c757d; color: white;"
+                                th:data-id="${appt.appointmentId}"
+                                onclick="openHistoryModal(this.getAttribute('data-id'))">
+                            History
+                        </button>
                     </div>
 
                     <!-- Provider Actions -->
@@ -333,6 +338,13 @@
                                 th:data-version="${appt.version}"
                                 onclick="handleRescheduleClick(this)">
                             Reschedule
+                        </button>
+
+                        <!-- History Action -->
+                        <button type="button" class="btn" style="background-color: #6c757d; color: white;"
+                                th:data-id="${appt.appointmentId}"
+                                onclick="openHistoryModal(this.getAttribute('data-id'))">
+                            History
                         </button>
                     </div>
                 </td>
@@ -367,6 +379,38 @@
     </div>
 </div>
 
+<!-- History Modal (Vanilla JS, no external libraries) -->
+<div id="historyModal" class="modal">
+    <div class="modal-content" style="max-width: 800px; max-height: 80vh; overflow-y: auto;">
+        <div class="modal-header">
+            <h3 id="historyModalTitle">Appointment Audit History</h3>
+            <button type="button" class="close-btn" onclick="closeHistoryModal()">&times;</button>
+        </div>
+        <div id="historyLoading" style="text-align: center; padding: 20px; color: #666;">
+            Loading audit history...
+        </div>
+        <div id="historyTableContainer" style="display: none;">
+            <table style="width: 100%; font-size: 13px;">
+                <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Action</th>
+                    <th>Actor</th>
+                    <th>Status Change</th>
+                    <th>Date & Time Change</th>
+                    <th>Details</th>
+                </tr>
+                </thead>
+                <tbody id="historyTableBody">
+                </tbody>
+            </table>
+        </div>
+        <div style="text-align: right; margin-top: 20px;">
+            <button type="button" class="btn" style="background: #e0e0e0;" onclick="closeHistoryModal()">Close</button>
+        </div>
+    </div>
+</div>
+
 <script>
     function handleRescheduleClick(button) {
         var appointmentId = button.getAttribute('data-id');
@@ -393,11 +437,73 @@
         document.getElementById('rescheduleModal').style.display = 'none';
     }
 
+    function openHistoryModal(appointmentId) {
+        document.getElementById('historyModalTitle').innerText = 'Audit History for Appointment #' + appointmentId;
+        document.getElementById('historyLoading').innerText = 'Loading audit history...';
+        document.getElementById('historyLoading').style.display = 'block';
+        document.getElementById('historyTableContainer').style.display = 'none';
+        document.getElementById('historyModal').style.display = 'block';
+
+        fetch('/appointments/' + appointmentId + '/history', {
+            headers: { 'Accept': 'application/json' }
+        })
+        .then(function(response) { return response.json(); })
+        .then(function(data) {
+            document.getElementById('historyLoading').style.display = 'none';
+            var tbody = document.getElementById('historyTableBody');
+            tbody.innerHTML = '';
+            if (!data || data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #777;">No history records found.</td></tr>';
+            } else {
+                data.forEach(function(item) {
+                    var row = document.createElement('tr');
+
+                    var timeChangeText = item.newDateTime || '-';
+                    if (item.previousDateTime && item.previousDateTime !== item.newDateTime) {
+                        timeChangeText = item.previousDateTime + ' → ' + item.newDateTime;
+                    }
+
+                    var statusChangeText = item.newStatus || '-';
+                    if (item.previousStatus && item.previousStatus !== item.newStatus) {
+                        statusChangeText = item.previousStatus + ' → ' + item.newStatus;
+                    }
+
+                    var actionBadgeClass = 'badge ';
+                    if (item.action === 'REQUESTED') actionBadgeClass += 'badge-pending';
+                    else if (item.action === 'CONFIRMED') actionBadgeClass += 'badge-confirmed';
+                    else if (item.action === 'CANCELLED') actionBadgeClass += 'badge-cancelled';
+                    else actionBadgeClass += 'badge-pending';
+
+                    row.innerHTML =
+                        '<td>' + (item.createdAt || '-') + '</td>' +
+                        '<td><span class="' + actionBadgeClass + '">' + item.action + '</span></td>' +
+                        '<td><strong>' + item.actorRole + '</strong></td>' +
+                        '<td>' + statusChangeText + '</td>' +
+                        '<td>' + timeChangeText + '</td>' +
+                        '<td style="color: #555;">' + (item.details || '-') + '</td>';
+                    tbody.appendChild(row);
+                });
+            }
+            document.getElementById('historyTableContainer').style.display = 'block';
+        })
+        .catch(function() {
+            document.getElementById('historyLoading').innerText = 'Failed to load audit history. Please try again.';
+        });
+    }
+
+    function closeHistoryModal() {
+        document.getElementById('historyModal').style.display = 'none';
+    }
+
     // Close modal if user clicks outside of modal content
     window.onclick = function(event) {
-        var modal = document.getElementById('rescheduleModal');
-        if (event.target === modal) {
-            modal.style.display = 'none';
+        var reschedModal = document.getElementById('rescheduleModal');
+        var histModal = document.getElementById('historyModal');
+        if (event.target === reschedModal) {
+            reschedModal.style.display = 'none';
+        }
+        if (event.target === histModal) {
+            histModal.style.display = 'none';
         }
     };
 </script>

@@ -101,6 +101,17 @@ Every state mutation (**Cancel**, **Confirm**, and **Reschedule**) is strictly p
   - The user is cleanly advised:
     > *"This appointment was modified by another user while you were viewing it. Your action was not applied, and the latest schedule is shown below."*
 
+### 5. Appointment History & Complete Audit Trail (Problem 2)
+When questions arise regarding why an appointment moved (e.g. from Monday to Wednesday), who changed it, and when:
+- **Answers Every Clinical & Operational Question**:
+  - **When did it change?** -> Exact timestamp recorded on every modification (`created_at`).
+  - **Who changed it?** -> Logged as either `PATIENT` or `PROVIDER` (`actor_role`).
+  - **What was it before?** -> Prior date/time (`previous_date_time`) and prior status (`previous_status`) are preserved without overwriting history.
+  - **What action was taken?** -> Recorded as `REQUESTED`, `CONFIRMED`, `RESCHEDULED`, or `CANCELLED` with a human-readable detail summary.
+- **Dedicated History UI**:
+  - In both Patient and Provider views, each row features a **"History"** button.
+  - Clicking "History" opens an interactive modal displaying the full chronological timeline from newest to oldest.
+
 ---
 
 ## Appointment State & Action Matrix
@@ -125,7 +136,7 @@ The application uses an in-memory **H2 Database**.
    - **JDBC URL**: `jdbc:h2:mem:patientportal`
    - **User Name**: `sa`
    - **Password**: *(leave empty)*
-3. Click **Connect** to inspect the `APPOINTMENTS` table directly.
+3. Click **Connect** to inspect both `APPOINTMENTS` and `APPOINTMENT_HISTORY` tables directly.
 
 ---
 
@@ -140,18 +151,21 @@ patient-portal/
 │   │   ├── java/com/qualifacts/patient_portal/
 │   │   │   ├── PatientPortalApplication.java    # Spring Boot entry point
 │   │   │   ├── controller/
-│   │   │   │   └── AppointmentController.java   # Web controller (routes & role switcher)
+│   │   │   │   └── AppointmentController.java   # Web controller (routes, role switcher & history endpoint)
 │   │   │   ├── model/
 │   │   │   │   ├── Appointment.java             # JPA Entity
-│   │   │   │   └── AppointmentStatus.java       # Status enum (PENDING, CONFIRMED, CANCELLED)
+│   │   │   │   ├── AppointmentStatus.java       # Status enum (PENDING, CONFIRMED, CANCELLED)
+│   │   │   │   ├── AppointmentHistory.java      # Audit Log JPA Entity
+│   │   │   │   └── AppointmentHistoryAction.java# History action enum
 │   │   │   ├── repository/
-│   │   │   │   └── AppointmentRepository.java   # Spring Data JPA Repository
+│   │   │   │   ├── AppointmentRepository.java   # Spring Data JPA Repository
+│   │   │   │   └── AppointmentHistoryRepository.java # Audit History Repository
 │   │   │   └── service/
-│   │   │       └── AppointmentService.java      # Business logic & state validation
+│   │   │       └── AppointmentService.java      # Business logic, state validation & audit logging
 │   │   └── resources/
 │   │       ├── application.properties           # Datasource, JPA & H2 configurations
 │   │       └── templates/
-│   │           └── appointments.html            # Thymeleaf UI (HTML + clean embedded CSS + JS modal)
+│   │           └── appointments.html            # Thymeleaf UI (clean CSS + reschedule & history modals)
 │   └── test/
 │       └── java/com/qualifacts/patient_portal/
 │           ├── PatientPortalApplicationTests.java

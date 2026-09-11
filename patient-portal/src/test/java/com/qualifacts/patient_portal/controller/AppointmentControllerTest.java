@@ -196,4 +196,25 @@ class AppointmentControllerTest {
                 .andExpect(redirectedUrl("/appointments?role=provider"))
                 .andExpect(flash().attributeExists("errorMessage"));
     }
+
+    @Test
+    void testGetAppointmentHistoryEndpoint() throws Exception {
+        Appointment appt = appointmentService.bookAppointment(
+                LocalDateTime.of(2026, 9, 21, 9, 0),
+                "Dr. Bob Johnson (Cardiologist)",
+                "Checkup",
+                "Annual check"
+        );
+        appointmentService.confirmAppointment(appt.getAppointmentId());
+        appointmentService.rescheduleAppointment(appt.getAppointmentId(), LocalDateTime.of(2026, 9, 23, 11, 0));
+
+        mockMvc.perform(get("/appointments/" + appt.getAppointmentId() + "/history"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$.length()").value(3))
+                .andExpect(jsonPath("$[0].action").value("RESCHEDULED"))
+                .andExpect(jsonPath("$[0].actorRole").value("PROVIDER"))
+                .andExpect(jsonPath("$[1].action").value("CONFIRMED"))
+                .andExpect(jsonPath("$[2].action").value("REQUESTED"));
+    }
 }

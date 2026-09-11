@@ -1,6 +1,7 @@
 package com.qualifacts.patient_portal.controller;
 
 import com.qualifacts.patient_portal.model.Appointment;
+import com.qualifacts.patient_portal.model.AppointmentHistory;
 import com.qualifacts.patient_portal.service.AppointmentService;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.stereotype.Controller;
@@ -9,10 +10,14 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Controller
 public class AppointmentController {
@@ -54,6 +59,29 @@ public class AppointmentController {
         model.addAttribute("appointmentTypes", APPOINTMENT_TYPES);
 
         return "appointments";
+    }
+
+    @GetMapping("/appointments/{id}/history")
+    @ResponseBody
+    public List<Map<String, Object>> getAppointmentHistory(@PathVariable("id") Long id) {
+        List<AppointmentHistory> historyList = appointmentService.getAppointmentHistory(id);
+        DateTimeFormatter dtFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+        DateTimeFormatter tsFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+        return historyList.stream().map(h -> {
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("historyId", h.getHistoryId());
+            map.put("appointmentId", h.getAppointmentId());
+            map.put("action", h.getAction().name());
+            map.put("actorRole", h.getActorRole());
+            map.put("previousDateTime", h.getPreviousDateTime() != null ? h.getPreviousDateTime().format(dtFormatter) : null);
+            map.put("newDateTime", h.getNewDateTime() != null ? h.getNewDateTime().format(dtFormatter) : null);
+            map.put("previousStatus", h.getPreviousStatus() != null ? h.getPreviousStatus().name() : null);
+            map.put("newStatus", h.getNewStatus() != null ? h.getNewStatus().name() : null);
+            map.put("details", h.getDetails());
+            map.put("createdAt", h.getCreatedAt() != null ? h.getCreatedAt().format(tsFormatter) : null);
+            return map;
+        }).toList();
     }
 
     @PostMapping("/appointments/book")

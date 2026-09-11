@@ -1,12 +1,16 @@
 package com.qualifacts.patient_portal.service;
 
 import com.qualifacts.patient_portal.model.Appointment;
+import com.qualifacts.patient_portal.model.AppointmentHistory;
+import com.qualifacts.patient_portal.model.AppointmentHistoryAction;
 import com.qualifacts.patient_portal.model.AppointmentStatus;
+import com.qualifacts.patient_portal.repository.AppointmentHistoryRepository;
 import com.qualifacts.patient_portal.repository.AppointmentRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 @Service
@@ -14,14 +18,22 @@ import java.util.List;
 public class AppointmentService {
 
     private final AppointmentRepository appointmentRepository;
+    private final AppointmentHistoryRepository appointmentHistoryRepository;
 
-    public AppointmentService(AppointmentRepository appointmentRepository) {
+    public AppointmentService(AppointmentRepository appointmentRepository,
+                              AppointmentHistoryRepository appointmentHistoryRepository) {
         this.appointmentRepository = appointmentRepository;
+        this.appointmentHistoryRepository = appointmentHistoryRepository;
     }
 
     @Transactional(readOnly = true)
     public List<Appointment> getAllAppointments() {
         return appointmentRepository.findAllByOrderByAppointmentIdAsc();
+    }
+
+    @Transactional(readOnly = true)
+    public List<AppointmentHistory> getAppointmentHistory(Long appointmentId) {
+        return appointmentHistoryRepository.findByAppointmentIdOrderByHistoryIdDesc(appointmentId);
     }
 
     @Transactional(readOnly = true)
@@ -44,7 +56,20 @@ public class AppointmentService {
         Appointment appointment = new Appointment(dateTime, providerName.trim(), appointmentType.trim(), reason != null ? reason.trim() : "");
         appointment.setStatus(AppointmentStatus.PENDING);
         // To guarantee immediate database synchronization and version increment.
-        return appointmentRepository.saveAndFlush(appointment);
+        Appointment saved = appointmentRepository.saveAndFlush(appointment);
+
+        appointmentHistoryRepository.save(new AppointmentHistory(
+                saved.getAppointmentId(),
+                AppointmentHistoryAction.REQUESTED,
+                "PATIENT",
+                null,
+                saved.getDateTime(),
+                null,
+                AppointmentStatus.PENDING,
+                "Appointment requested by Patient"
+        ));
+
+        return saved;
     }
 
     private void validateVersion(Appointment appointment, Integer clientVersion) {
@@ -69,7 +94,20 @@ public class AppointmentService {
 
         appointment.setStatus(AppointmentStatus.CANCELLED);
         // To guarantee immediate database synchronization and version increment.
-        return appointmentRepository.saveAndFlush(appointment);
+        Appointment saved = appointmentRepository.saveAndFlush(appointment);
+
+        appointmentHistoryRepository.save(new AppointmentHistory(
+                saved.getAppointmentId(),
+                AppointmentHistoryAction.CANCELLED,
+                "PATIENT",
+                saved.getDateTime(),
+                saved.getDateTime(),
+                AppointmentStatus.CONFIRMED,
+                AppointmentStatus.CANCELLED,
+                "Appointment cancelled by Patient"
+        ));
+
+        return saved;
     }
 
     public Appointment cancelAppointment(Long id) {
@@ -92,7 +130,20 @@ public class AppointmentService {
 
         appointment.setStatus(AppointmentStatus.CONFIRMED);
         // To guarantee immediate database synchronization and version increment.
-        return appointmentRepository.saveAndFlush(appointment);
+        Appointment saved = appointmentRepository.saveAndFlush(appointment);
+
+        appointmentHistoryRepository.save(new AppointmentHistory(
+                saved.getAppointmentId(),
+                AppointmentHistoryAction.CONFIRMED,
+                "PROVIDER",
+                saved.getDateTime(),
+                saved.getDateTime(),
+                AppointmentStatus.PENDING,
+                AppointmentStatus.CONFIRMED,
+                "Appointment confirmed by Provider"
+        ));
+
+        return saved;
     }
 
     public Appointment confirmAppointment(Long id) {
@@ -111,10 +162,27 @@ public class AppointmentService {
             throw new IllegalStateException("Cancelled appointments cannot be rescheduled.");
         }
 
-        // Pending stays Pending; Confirmed stays Confirmed
+        LocalDateTime oldDateTime = appointment.getDateTime();
         appointment.setDateTime(newDateTime);
         // To guarantee immediate database synchronization and version increment.
-        return appointmentRepository.saveAndFlush(appointment);
+        Appointment saved = appointmentRepository.saveAndFlush(appointment);
+
+        String detailMsg = "Rescheduled from " + oldDateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+                + " to " + newDateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+                + " by Provider";
+
+        appointmentHistoryRepository.save(new AppointmentHistory(
+                saved.getAppointmentId(),
+                AppointmentHistoryAction.RESCHEDULED,
+                "PROVIDER",
+                oldDateTime,
+                newDateTime,
+                saved.getStatus(),
+                saved.getStatus(),
+                detailMsg
+        ));
+
+        return saved;
     }
 
     public Appointment rescheduleAppointment(Long id, LocalDateTime newDateTime) {
