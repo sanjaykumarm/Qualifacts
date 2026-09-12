@@ -125,7 +125,6 @@ When a provider confirms an appointment, the patient is notified via an abstract
   - Confirming an appointment cannot get slow or fail just because the notification step fails or encounters latency.
   - In `AppointmentService.confirmAppointment()`, the notification dispatch is isolated in a protective `try-catch` block. If the notification service throws an error or experiences downtime, the error is safely logged and the database transaction commits successfully.
 
----
 
 ## Production Considerations: What We'd Change for Real Traffic
 
@@ -168,6 +167,24 @@ In our lightweight prototype, notifications are simulated synchronously with err
 5. **Rate Limiting & Throttling**:
    - Token bucket rate limiters to respect telecom provider thresholds (e.g., Twilio carrier rate limits) during peak confirmation hours.
 
+### 7. Preventing Overlapping Confirmed Appointments (Problem 4: Provider Overlap Prevention)
+- **Problem**: A provider cannot be in two places at once, so two overlapping confirmed appointments for the same provider should never exist.
+- **Challenge**:
+  - **Multi-Row Write Skew**: Two pending requests for the same provider at the exact same time exist in two *different* rows (e.g. Appointment #1 and Appointment #2).
+  - Single-row optimistic locking (`@Version`) checks do not conflict between separate rows.
+  - If two providers click "Confirm" on #1 and #2 at the exact same instant, without coordination both checks pass and double-book the provider.
+- **Solution**:
+  - **Database Pessimistic Write Locking (`ProviderRepository`)**:
+    - Introduced `Provider` entity and `ProviderRepository` with `@Lock(LockModeType.PESSIMISTIC_WRITE) findByNameForUpdate(providerName)`.
+    - When confirming or rescheduling, the transaction acquires an exclusive database-level row lock (`SELECT ... FOR UPDATE`) on that provider.
+    - Any concurrent transaction attempting to confirm or reschedule for the same provider is serialized at the database engine level.
+  - **User-Friendly Error**:
+    - If an overlap is detected, the transaction aborts with a clear message:
+      > *"Cannot confirm appointment: Dr. Alice Smith already has a confirmed appointment at 2026-10-05 14:00. Please reschedule to another time."*
+  - **Key Benefits**:
+    - **Multi-Instance / Cluster Safe**: Handled directly by the database engine across all web servers and containers.
+    - **Future-Proof Extensibility**: Readily supports future appointment durations, time-window overlap checks, and buffer intervals.
+	
 ---
 
 ## Appointment State & Action Matrix
@@ -200,30 +217,32 @@ The application uses an in-memory **H2 Database**.
 
 ```
 patient-portal/
-├── pom.xml                                      # Maven configuration & dependencies
-├── README.md                                    # Project documentation
+├── pom.xml                                              # Maven configuration & dependencies
+├── README.md                                            # Project documentation
 ├── src/
 │   ├── main/
 │   │   ├── java/com/qualifacts/patient_portal/
-│   │   │   ├── PatientPortalApplication.java    # Spring Boot entry point
+│   │   │   ├── PatientPortalApplication.java            # Spring Boot entry point
 │   │   │   ├── controller/
-│   │   │   │   └── AppointmentController.java   # Web controller (routes, role switcher & history endpoint)
+│   │   │   │   └── AppointmentController.java           # Web controller (routes, role switcher & history endpoint)
 │   │   │   ├── model/
-│   │   │   │   ├── Appointment.java             # JPA Entity
-│   │   │   │   ├── AppointmentStatus.java       # Status enum (PENDING, CONFIRMED, CANCELLED)
-│   │   │   │   ├── AppointmentHistory.java      # Audit Log JPA Entity
-│   │   │   │   └── AppointmentHistoryAction.java# History action enum
+│   │   │   │   ├── Appointment.java                     # JPA Entity
+│   │   │   │   ├── AppointmentStatus.java               # Status enum (PENDING, CONFIRMED, CANCELLED)
+│   │   │   │   ├── AppointmentHistory.java              # Audit Log JPA Entity
+│   │   │   │   ├── AppointmentHistoryAction.java        # History action enum
+│   │   │   │   └── Provider.java                        # Provider JPA Entity (used for pessimistic schedule locking)
 │   │   │   ├── repository/
-│   │   │   │   ├── AppointmentRepository.java   # Spring Data JPA Repository
-│   │   │   │   └── AppointmentHistoryRepository.java # Audit History Repository
+│   │   │   │   ├── AppointmentRepository.java           # Spring Data JPA Repository
+│   │   │   │   ├── AppointmentHistoryRepository.java    # Audit History Repository
+│   │   │   │   └── ProviderRepository.java              # Repository with PESSIMISTIC_WRITE locking query
 │   │   │   └── service/
-│   │   │       ├── AppointmentService.java      # Business logic, state validation & audit logging
-│   │   │       ├── NotificationService.java     # Notification abstraction interface
-│   │   │       └── StubNotificationService.java # Logging stub implementation with fault tolerance
+│   │   │       ├── AppointmentService.java              # Business logic, state validation & audit logging
+│   │   │       ├── NotificationService.java             # Notification abstraction interface
+│   │   │       └── StubNotificationService.java         # Logging stub implementation with fault tolerance
 │   │   └── resources/
-│   │       ├── application.properties           # Datasource, JPA & H2 configurations
+│   │       ├── application.properties                   # Datasource, JPA & H2 configurations
 │   │       └── templates/
-│   │           └── appointments.html            # Thymeleaf UI (clean CSS + reschedule & history modals)
+│   │           └── appointments.html                    # Thymeleaf UI (clean CSS + reschedule & history modals)
 │   └── test/
 │       └── java/com/qualifacts/patient_portal/
 │           ├── PatientPortalApplicationTests.java

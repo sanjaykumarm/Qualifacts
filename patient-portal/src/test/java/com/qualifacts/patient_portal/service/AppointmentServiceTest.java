@@ -344,12 +344,70 @@ class AppointmentServiceTest {
                         ? (com.qualifacts.patient_portal.repository.AppointmentRepository) org.springframework.test.util.ReflectionTestUtils.getField(appointmentService, "appointmentRepository")
                         : null,
                 (com.qualifacts.patient_portal.repository.AppointmentHistoryRepository) org.springframework.test.util.ReflectionTestUtils.getField(appointmentService, "appointmentHistoryRepository"),
-                faultyNotificationService
+                faultyNotificationService,
+                (com.qualifacts.patient_portal.repository.ProviderRepository) org.springframework.test.util.ReflectionTestUtils.getField(appointmentService, "providerRepository")
         );
 
         // Confirmation must succeed despite notification service failure
         Appointment confirmed = serviceWithFaultyNotification.confirmAppointment(appt.getAppointmentId(), appt.getVersion());
         assertNotNull(confirmed);
         assertEquals(AppointmentStatus.CONFIRMED, confirmed.getStatus());
+    }
+
+    @Test
+    void testCannotConfirmOverlappingAppointmentForSameProvider() {
+        LocalDateTime slotTime = LocalDateTime.of(2026, 10, 5, 14, 0);
+        String provider = "Dr. Alice Smith (General Physician)";
+
+        // Patient 1 books slot
+        Appointment appt1 = appointmentService.bookAppointment(slotTime, provider, "Checkup", "Reason 1");
+        // Patient 2 books the exact same slot with the same provider
+        Appointment appt2 = appointmentService.bookAppointment(slotTime, provider, "Consultation", "Reason 2");
+
+        // Provider confirms appointment 1 -> should succeed
+        Appointment confirmed1 = appointmentService.confirmAppointment(appt1.getAppointmentId(), appt1.getVersion());
+        assertEquals(AppointmentStatus.CONFIRMED, confirmed1.getStatus());
+
+        // Provider attempts to confirm appointment 2 at the same slot -> MUST FAIL
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+                appointmentService.confirmAppointment(appt2.getAppointmentId(), appt2.getVersion())
+        );
+        assertTrue(ex.getMessage().contains("already has a confirmed appointment at 2026-10-05 14:00"));
+
+        // Appointment 2 must still remain in PENDING status
+        Appointment unchangedAppt2 = appointmentService.getAppointmentById(appt2.getAppointmentId());
+        assertEquals(AppointmentStatus.PENDING, unchangedAppt2.getStatus());
+    }
+
+    @Test
+    void testCanConfirmSameSlotForDifferentProviders() {
+        LocalDateTime slotTime = LocalDateTime.of(2026, 10, 5, 15, 0);
+
+        // Doctor A and Doctor B at the same time
+        Appointment apptDrA = appointmentService.bookAppointment(slotTime, "Dr. Alice Smith (General Physician)", "Checkup", "A");
+        Appointment apptDrB = appointmentService.bookAppointment(slotTime, "Dr. Bob Johnson (Cardiologist)", "Checkup", "B");
+
+        assertDoesNotThrow(() -> appointmentService.confirmAppointment(apptDrA.getAppointmentId(), apptDrA.getVersion()));
+        assertDoesNotThrow(() -> appointmentService.confirmAppointment(apptDrB.getAppointmentId(), apptDrB.getVersion()));
+    }
+
+    @Test
+    void testCannotRescheduleToOverlappingSlot() {
+        LocalDateTime slot1 = LocalDateTime.of(2026, 10, 6, 10, 0);
+        LocalDateTime slot2 = LocalDateTime.of(2026, 10, 6, 11, 0);
+        String provider = "Dr. Alice Smith (General Physician)";
+
+        // Two confirmed appointments at different slots
+        Appointment appt1 = appointmentService.bookAppointment(slot1, provider, "Checkup", "Slot 1");
+        appointmentService.confirmAppointment(appt1.getAppointmentId(), appt1.getVersion());
+
+        Appointment appt2 = appointmentService.bookAppointment(slot2, provider, "Checkup", "Slot 2");
+        appointmentService.confirmAppointment(appt2.getAppointmentId(), appt2.getVersion());
+
+        // Attempt to reschedule appt2 into appt1's slot (slot1) -> MUST FAIL
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+                appointmentService.rescheduleAppointment(appt2.getAppointmentId(), slot1, appt2.getVersion())
+        );
+        assertTrue(ex.getMessage().contains("already has a confirmed appointment at 2026-10-06 10:00"));
     }
 }
