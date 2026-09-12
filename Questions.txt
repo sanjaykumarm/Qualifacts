@@ -1,1 +1,0 @@
-- Why we choose H2 database instead of SQLite ?
