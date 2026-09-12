@@ -323,4 +323,33 @@ class AppointmentServiceTest {
         assertEquals(AppointmentStatus.CONFIRMED, h4.get(0).getPreviousStatus());
         assertEquals(AppointmentStatus.CANCELLED, h4.get(0).getNewStatus());
     }
+
+    @Test
+    void testNotificationFailureDoesNotBreakConfirmation() {
+        // Create an appointment
+        Appointment appt = appointmentService.bookAppointment(
+                LocalDateTime.now().plusDays(2),
+                "Dr. Smith",
+                "Consultation",
+                "Checkup"
+        );
+
+        // Inject a broken notification service that throws an unhandled RuntimeException
+        NotificationService faultyNotificationService = (appointment) -> {
+            throw new RuntimeException("Simulated notification service failure / network timeout");
+        };
+
+        AppointmentService serviceWithFaultyNotification = new AppointmentService(
+                org.springframework.test.util.ReflectionTestUtils.getField(appointmentService, "appointmentRepository") != null
+                        ? (com.qualifacts.patient_portal.repository.AppointmentRepository) org.springframework.test.util.ReflectionTestUtils.getField(appointmentService, "appointmentRepository")
+                        : null,
+                (com.qualifacts.patient_portal.repository.AppointmentHistoryRepository) org.springframework.test.util.ReflectionTestUtils.getField(appointmentService, "appointmentHistoryRepository"),
+                faultyNotificationService
+        );
+
+        // Confirmation must succeed despite notification service failure
+        Appointment confirmed = serviceWithFaultyNotification.confirmAppointment(appt.getAppointmentId(), appt.getVersion());
+        assertNotNull(confirmed);
+        assertEquals(AppointmentStatus.CONFIRMED, confirmed.getStatus());
+    }
 }

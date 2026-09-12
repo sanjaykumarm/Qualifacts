@@ -6,6 +6,8 @@ import com.qualifacts.patient_portal.model.AppointmentHistoryAction;
 import com.qualifacts.patient_portal.model.AppointmentStatus;
 import com.qualifacts.patient_portal.repository.AppointmentHistoryRepository;
 import com.qualifacts.patient_portal.repository.AppointmentRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,13 +19,18 @@ import java.util.List;
 @Transactional
 public class AppointmentService {
 
+    private static final Logger log = LoggerFactory.getLogger(AppointmentService.class);
+
     private final AppointmentRepository appointmentRepository;
     private final AppointmentHistoryRepository appointmentHistoryRepository;
+    private final NotificationService notificationService;
 
     public AppointmentService(AppointmentRepository appointmentRepository,
-                              AppointmentHistoryRepository appointmentHistoryRepository) {
+                              AppointmentHistoryRepository appointmentHistoryRepository,
+                              NotificationService notificationService) {
         this.appointmentRepository = appointmentRepository;
         this.appointmentHistoryRepository = appointmentHistoryRepository;
+        this.notificationService = notificationService;
     }
 
     @Transactional(readOnly = true)
@@ -142,6 +149,13 @@ public class AppointmentService {
                 AppointmentStatus.CONFIRMED,
                 "Appointment confirmed by Provider"
         ));
+
+        // Dispatch notification with fault isolation: notification errors must never fail confirmation
+        try {
+            notificationService.notifyAppointmentConfirmed(saved);
+        } catch (Exception ex) {
+            log.error("Notification dispatch failed for confirmed appointment #{}: {}", saved.getAppointmentId(), ex.getMessage(), ex);
+        }
 
         return saved;
     }
