@@ -88,7 +88,7 @@ A role switcher in the header enables toggling between **Patient** and **Provide
   - Rescheduling a **`CONFIRMED`** appointment keeps it in **`CONFIRMED`** status.
   - **`CANCELLED`** appointments cannot be rescheduled (Reschedule button is disabled).
 
-### 4. Concurrency Control & Conflict Prevention (Optimistic Locking)
+### 4. Concurrency Control & Conflict Prevention - Optimistic Locking (Problem 1)
 Every state mutation (**Cancel**, **Confirm**, and **Reschedule**) is strictly protected by JPA Optimistic Locking (`@Version`):
 - **Universal Protection across Roles**:
   - If a patient cancels while a provider is attempting to reschedule the same appointment, the provider's stale reschedule is rejected.
@@ -167,7 +167,7 @@ In our lightweight prototype, notifications are simulated synchronously with err
 5. **Rate Limiting & Throttling**:
    - Token bucket rate limiters to respect telecom provider thresholds (e.g., Twilio carrier rate limits) during peak confirmation hours.
 
-### 7. Preventing Overlapping Confirmed Appointments (Problem 4: Provider Overlap Prevention)
+### 7. Preventing Overlapping Confirmed Appointments - Provider Overlap Prevention (Problem 4)
 - **Problem**: A provider cannot be in two places at once, so two overlapping confirmed appointments for the same provider should never exist.
 - **Challenge**:
   - **Multi-Row Write Skew**: Two pending requests for the same provider at the exact same time exist in two *different* rows (e.g. Appointment #1 and Appointment #2).
@@ -223,6 +223,8 @@ patient-portal/
 │   ├── main/
 │   │   ├── java/com/qualifacts/patient_portal/
 │   │   │   ├── PatientPortalApplication.java            # Spring Boot entry point
+│   │   │   ├── config/
+│   │   │   │   └── DataInitializer.java                 # Seeds initial mock appointments on startup (all PENDING)
 │   │   │   ├── controller/
 │   │   │   │   └── AppointmentController.java           # Web controller (routes, role switcher & history endpoint)
 │   │   │   ├── model/
